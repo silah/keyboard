@@ -1,0 +1,358 @@
+import { create } from 'zustand'
+import { Board, PostIt, CanvasState, Section } from '../types'
+import { calculateSectionLayout, getSectionForPosition, constrainPostItToSection, repositionPostItForNewSection } from '../utils/sectionLayout'
+
+const COLORS = ['#FFE066', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57']
+
+interface BoardStore {
+  currentBoard: Board | null
+  canvasState: CanvasState
+  canvasSize: { width: number, height: number }
+  
+  // Actions
+  createPostIt: (x: number, y: number) => void
+  updatePostIt: (id: string, updates: Partial<PostIt>) => void
+  deletePostIt: (id: string) => void
+  selectPostIt: (id: string | null) => void
+  
+  // Section actions
+  createSection: () => void
+  updateSectionName: (id: number, name: string) => void
+  selectSection: (id: number | null) => void
+  reassignPostItToSection: (postItId: string, sectionId: number) => void
+  deleteSection: (sectionId: number) => void
+  updateCanvasSize: (width: number, height: number) => void
+  
+  // Canvas actions
+  setZoom: (zoom: number) => void
+  setPan: (panX: number, panY: number) => void
+  
+  // Board actions
+  saveBoard: () => Promise<void>
+  loadBoard: (id: string) => Promise<void>
+  newBoard: () => void
+}
+
+export const useBoardStore = create<BoardStore>((set, get) => ({
+  currentBoard: {
+    id: 'default',
+    name: 'My Board',
+    postIts: [],
+    sections: [{
+      id: 1,
+      name: 'Section 1',
+      x: 0,
+      y: 0,
+      width: window.innerWidth,
+      height: window.innerHeight
+    }],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  },
+  canvasState: {
+    zoom: 1,
+    panX: 0,
+    panY: 0,
+    selectedPostItId: null,
+    selectedSectionId: null
+  },
+  canvasSize: {
+    width: window.innerWidth,
+    height: window.innerHeight
+  },
+
+  createPostIt: (x: number, y: number) => {
+    const { currentBoard, canvasSize } = get()
+    if (!currentBoard) return
+
+    // Determine which section this post-it should belong to
+    const targetSection = getSectionForPosition(currentBoard.sections, x, y) || currentBoard.sections[0]
+    
+    const newPostIt: PostIt = {
+      id: Math.random().toString(36).substring(7),
+      x,
+      y,
+      width: 200,
+      height: 150,
+      text: 'Double-click to edit',
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      fontSize: 14,
+      sectionId: targetSection.id,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+
+    // Constrain to section bounds
+    const constrainedPos = constrainPostItToSection(newPostIt, targetSection)
+    newPostIt.x = constrainedPos.x
+    newPostIt.y = constrainedPos.y
+
+    set((state) => ({
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        postIts: [...state.currentBoard.postIts, newPostIt],
+        updatedAt: Date.now()
+      } : null
+    }))
+  },
+
+  updatePostIt: (id: string, updates: Partial<PostIt>) => {
+    set((state) => ({
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        postIts: state.currentBoard.postIts.map(postIt => 
+          postIt.id === id ? { ...postIt, ...updates, updatedAt: Date.now() } : postIt
+        ),
+        updatedAt: Date.now()
+      } : null
+    }))
+  },
+
+  deletePostIt: (id: string) => {
+    set((state) => ({
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        postIts: state.currentBoard.postIts.filter(postIt => postIt.id !== id),
+        updatedAt: Date.now()
+      } : null
+    }))
+  },
+
+  selectPostIt: (id: string | null) => {
+    set((state: any) => ({
+      canvasState: { ...state.canvasState, selectedPostItId: id }
+    }))
+  },
+
+  // Section management
+  createSection: () => {
+    const { currentBoard, canvasSize } = get()
+    if (!currentBoard || currentBoard.sections.length >= 4) return
+
+    const oldSections = currentBoard.sections
+    const newSectionCount = currentBoard.sections.length + 1
+    const newSections = calculateSectionLayout(newSectionCount, canvasSize.width, canvasSize.height)
+    
+    // Preserve section names
+    const sectionsWithNames = newSections.map(section => {
+      const existing = oldSections.find((s: any) => s.id === section.id)
+      return existing ? { ...section, name: existing.name } : section
+    })
+
+    // Reposition existing post-its proportionally to their new section sizes
+    const updatedPostIts = currentBoard.postIts.map((postIt: any) => {
+      const oldSection = oldSections.find((s: any) => s.id === postIt.sectionId)
+      const newSection = sectionsWithNames.find(s => s.id === postIt.sectionId)
+      
+      if (oldSection && newSection) {
+        const newPosition = repositionPostItForNewSection(postIt, oldSection, newSection)
+        return { ...postIt, x: newPosition.x, y: newPosition.y, updatedAt: Date.now() }
+      }
+      return postIt
+    })
+    
+    set((state: any) => ({
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        sections: sectionsWithNames,
+        postIts: updatedPostIts,
+        updatedAt: Date.now()
+      } : null
+    }))
+  },
+
+  updateSectionName: (id: number, name: string) => {
+    set((state: any) => ({
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        sections: state.currentBoard.sections.map((section: any) => 
+          section.id === id ? { ...section, name } : section
+        ),
+        updatedAt: Date.now()
+      } : null
+    }))
+  },
+
+  selectSection: (id: number | null) => {
+    set((state: any) => ({
+      canvasState: { ...state.canvasState, selectedSectionId: id }
+    }))
+  },
+
+  reassignPostItToSection: (postItId: string, sectionId: number) => {
+    const { currentBoard } = get()
+    if (!currentBoard) return
+
+    const targetSection = currentBoard.sections.find(s => s.id === sectionId)
+    if (!targetSection) return
+
+    set((state: any) => ({
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        postIts: state.currentBoard.postIts.map((postIt: any) => {
+          if (postIt.id === postItId) {
+            // Move post-it to target section and constrain position
+            const constrainedPos = constrainPostItToSection(postIt, targetSection)
+            return {
+              ...postIt,
+              sectionId,
+              x: constrainedPos.x,
+              y: constrainedPos.y,
+              updatedAt: Date.now()
+            }
+          }
+          return postIt
+        }),
+        updatedAt: Date.now()
+      } : null
+    }))
+  },
+
+  deleteSection: (sectionId: number) => {
+    const { currentBoard, canvasSize } = get()
+    if (!currentBoard || currentBoard.sections.length <= 1) return // Can't delete the last section
+
+    // Remove the section and all post-its that belong to it
+    const remainingSections = currentBoard.sections.filter((s: any) => s.id !== sectionId)
+    const remainingPostIts = currentBoard.postIts.filter((p: any) => p.sectionId !== sectionId)
+    
+    // Renumber sections to be consecutive (1, 2, 3, 4)
+    const renumberedSections = remainingSections.map((section: any, index: number) => ({
+      ...section,
+      id: index + 1
+    }))
+    
+    // Update post-it section IDs to match renumbered sections
+    const updatedPostIts = remainingPostIts.map((postIt: any) => {
+      const oldSectionIndex = remainingSections.findIndex((s: any) => s.id === postIt.sectionId)
+      return { ...postIt, sectionId: oldSectionIndex + 1, updatedAt: Date.now() }
+    })
+
+    // Recalculate layout for remaining sections
+    const newLayout = calculateSectionLayout(renumberedSections.length, canvasSize.width, canvasSize.height)
+    const sectionsWithNames = newLayout.map((section, index) => ({
+      ...section,
+      name: renumberedSections[index]?.name || `Section ${section.id}`
+    }))
+
+    // Reposition remaining post-its to fit new layout
+    const repositionedPostIts = updatedPostIts.map((postIt: any) => {
+      const oldSection = remainingSections.find((s: any) => s.id === postIt.sectionId)
+      const newSection = sectionsWithNames.find(s => s.id === postIt.sectionId)
+      
+      if (oldSection && newSection) {
+        const newPosition = repositionPostItForNewSection(postIt, oldSection, newSection)
+        return { ...postIt, x: newPosition.x, y: newPosition.y, updatedAt: Date.now() }
+      }
+      return postIt
+    })
+
+    set((state: any) => ({
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        sections: sectionsWithNames,
+        postIts: repositionedPostIts,
+        updatedAt: Date.now()
+      } : null,
+      canvasState: { ...state.canvasState, selectedSectionId: null }
+    }))
+  },
+
+  updateCanvasSize: (width: number, height: number) => {
+    const { currentBoard } = get()
+    if (!currentBoard) return
+
+    const oldSections = currentBoard.sections
+    const updatedSections = calculateSectionLayout(currentBoard.sections.length, width, height)
+    
+    // Preserve section names
+    const sectionsWithNames = updatedSections.map(section => {
+      const existing = oldSections.find((s: any) => s.id === section.id)
+      return existing ? { ...section, name: existing.name } : section
+    })
+
+    // Reposition existing post-its proportionally to their new section sizes
+    const repositionedPostIts = currentBoard.postIts.map((postIt: any) => {
+      const oldSection = oldSections.find((s: any) => s.id === postIt.sectionId)
+      const newSection = sectionsWithNames.find(s => s.id === postIt.sectionId)
+      
+      if (oldSection && newSection) {
+        const newPosition = repositionPostItForNewSection(postIt, oldSection, newSection)
+        return { ...postIt, x: newPosition.x, y: newPosition.y, updatedAt: Date.now() }
+      }
+      return postIt
+    })
+
+    set((state: any) => ({
+      canvasSize: { width, height },
+      currentBoard: state.currentBoard ? {
+        ...state.currentBoard,
+        sections: sectionsWithNames,
+        postIts: repositionedPostIts,
+        updatedAt: Date.now()
+      } : null
+    }))
+  },
+
+  setZoom: (zoom: number) => {
+    set((state: any) => ({
+      canvasState: { ...state.canvasState, zoom: Math.max(0.1, Math.min(5, zoom)) }
+    }))
+  },
+
+  setPan: (panX: number, panY: number) => {
+    set((state: any) => ({
+      canvasState: { ...state.canvasState, panX, panY }
+    }))
+  },
+
+  saveBoard: async () => {
+    const { currentBoard } = get()
+    if (!currentBoard) return
+
+    try {
+      const response = await fetch('http://localhost:3001/api/boards', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(currentBoard),
+      })
+
+      if (response.ok) {
+        console.log('Board saved successfully')
+      } else {
+        console.error('Failed to save board')
+      }
+    } catch (error) {
+      console.error('Error saving board:', error)
+    }
+  },
+
+  loadBoard: async (id: string) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/boards/${id}`)
+      if (response.ok) {
+        const board = await response.json()
+        set({ currentBoard: board })
+      } else {
+        console.error('Failed to load board')
+      }
+    } catch (error) {
+      console.error('Error loading board:', error)
+    }
+  },
+
+  newBoard: () => {
+    const { canvasSize } = get()
+    const newBoard: Board = {
+      id: Math.random().toString(36).substring(7),
+      name: 'New Board',
+      postIts: [],
+      sections: calculateSectionLayout(1, canvasSize.width, canvasSize.height),
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    set({ currentBoard: newBoard })
+  }
+}))
