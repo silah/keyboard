@@ -2,7 +2,7 @@
 
 # Keyboard App - Docker Startup Script
 
-echo "🚀 Starting Keyboard Digital Post-it Board..."
+echo "Starting Keyboard Digital Post-it Board..."
 echo "========================================"
 
 # Check if Docker and Docker Compose are installed
