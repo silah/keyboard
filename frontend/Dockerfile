@@ -1,5 +1,5 @@
-# Frontend Dockerfile
-FROM node:18-alpine AS builder
+# Frontend Dockerfile - Use standard Node image for better compatibility
+FROM node:18 AS builder
 
 # Set working directory
 WORKDIR /app
@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Copy source code
 COPY . .
