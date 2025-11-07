@@ -568,43 +568,11 @@ const Canvas = () => {
           // Re-create the post-it with updated text
           setTimeout(() => {
             try {
-              // Get fresh canvas reference
-              const currentCanvas = fabricCanvasRef.current
-              console.log('Current canvas reference:', currentCanvas)
-              console.log('Canvas element:', currentCanvas?.getElement())
-              console.log('Canvas context:', currentCanvas?.getContext())
-              
-              if (!currentCanvas || !currentCanvas.getElement() || !currentCanvas.getContext()) {
-                console.error('Canvas is invalid, attempting to reinitialize')
-                
-                // Try to reinitialize canvas
-                if (canvasRef.current && fabricCanvasRef.current) {
-                  const newCanvas = new fabric.Canvas(canvasRef.current, {
-                    width: window.innerWidth,
-                    height: window.innerHeight,
-                    backgroundColor: '#f5f5f5',
-                    selection: true
-                  })
-                  fabricCanvasRef.current = newCanvas
-                  console.log('Canvas reinitialized')
-                }
-                
-                return
-              }
-              
-              createFabricPostIt(currentCanvas, { ...postIt, text: updatedText })
-              
-              // Use requestAnimationFrame to ensure proper timing
-              requestAnimationFrame(() => {
-                try {
-                  currentCanvas.renderAll()
-                  console.log('Text edit completed successfully')
-                } catch (renderError) {
-                  console.error('Error during canvas render:', renderError)
-                }
-              })
+              console.log('Text edit completed, store updated - letting sync effect handle recreation')
+              // Don't manually recreate the fabric object - let the store sync handle it
+              // This prevents duplicate objects in zoomed mode
             } catch (error) {
-              console.error('Error recreating post-it after text edit:', error)
+              console.error('Error completing text edit:', error)
             }
           }, 50)
         } catch (error) {
@@ -690,7 +658,18 @@ const Canvas = () => {
         const postIt = currentBoard?.postIts.find((p: any) => p.id === postItId)
         if (postIt) {
           console.log('Found post-it, entering edit mode:', postIt)
-          enterTextEditMode(canvas, postIt, activeObject as any)
+          // Use the fabric object's current position and size (which are correctly scaled for zoomed mode)
+          // but keep the store data for text and other properties
+          const fabricPostIt = activeObject as any
+          const postItWithCurrentPosition = {
+            ...postIt,
+            x: fabricPostIt.left || 0,
+            y: fabricPostIt.top || 0,
+            width: fabricPostIt.width || 200,
+            height: fabricPostIt.height || 150
+          }
+          console.log('Using fabric object position:', { x: fabricPostIt.left, y: fabricPostIt.top, width: fabricPostIt.width, height: fabricPostIt.height })
+          enterTextEditMode(canvas, postItWithCurrentPosition, activeObject as any)
         } else {
           console.log('Post-it not found in currentBoard')
           
