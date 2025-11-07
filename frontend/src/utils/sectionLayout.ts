@@ -153,3 +153,56 @@ export const repositionPostItForNewSection = (
     y: newY 
   }, newSection)
 }
+
+// Check if two rectangles overlap
+export const doPostItsOverlap = (
+  postIt1: { x: number, y: number, width: number, height: number },
+  postIt2: { x: number, y: number, width: number, height: number }
+): boolean => {
+  return !(
+    postIt1.x + postIt1.width <= postIt2.x ||   // postIt1 is to the left of postIt2
+    postIt2.x + postIt2.width <= postIt1.x ||   // postIt2 is to the left of postIt1
+    postIt1.y + postIt1.height <= postIt2.y ||  // postIt1 is above postIt2
+    postIt2.y + postIt2.height <= postIt1.y     // postIt2 is above postIt1
+  )
+}
+
+// Find a non-overlapping position for a post-it within a section
+export const findNonOverlappingPosition = (
+  postIt: { x: number, y: number, width: number, height: number },
+  section: Section,
+  existingPostIts: { x: number, y: number, width: number, height: number }[]
+): { x: number, y: number } => {
+  const padding = 10
+  const sectionPadding = { top: 40, left: 10, right: 10, bottom: 10 }
+  
+  // Define the area within the section where post-its can be placed
+  const placementArea = {
+    x: section.x + sectionPadding.left,
+    y: section.y + sectionPadding.top,
+    width: section.width - sectionPadding.left - sectionPadding.right,
+    height: section.height - sectionPadding.top - sectionPadding.bottom
+  }
+  
+  // Try to place the post-it in a grid pattern
+  const step = 20 // Grid step size
+  
+  for (let y = placementArea.y; y <= placementArea.y + placementArea.height - postIt.height; y += step) {
+    for (let x = placementArea.x; x <= placementArea.x + placementArea.width - postIt.width; x += step) {
+      const testPosition = { x, y, width: postIt.width, height: postIt.height }
+      
+      // Check if this position overlaps with any existing post-it
+      const hasOverlap = existingPostIts.some(existing => 
+        doPostItsOverlap(testPosition, existing)
+      )
+      
+      if (!hasOverlap) {
+        return { x, y }
+      }
+    }
+  }
+  
+  // If no non-overlapping position found, use constrained position (overlapping is allowed)
+  const constrainedPos = constrainPostItToSection(postIt, section)
+  return { x: constrainedPos.x, y: constrainedPos.y }
+}

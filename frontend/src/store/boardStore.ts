@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { Board, PostIt, CanvasState } from '../types'
-import { calculateSectionLayout, getSectionForPosition, constrainPostItToSection, repositionPostItForNewSection } from '../utils/sectionLayout'
+import { calculateSectionLayout, getSectionForPosition, constrainPostItToSection, repositionPostItForNewSection, findNonOverlappingPosition } from '../utils/sectionLayout'
 
 const COLORS = ['#FFE066', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57']
 
@@ -11,6 +11,8 @@ interface BoardStore {
   currentBoard: Board | null
   canvasState: CanvasState
   canvasSize: { width: number, height: number }
+  focusedSectionId: number | null
+  isZoomedToSection: boolean
   
   // Actions
   createPostIt: (x: number, y: number) => void
@@ -22,6 +24,9 @@ interface BoardStore {
   createSection: () => void
   updateSectionName: (id: number, name: string) => void
   selectSection: (id: number | null) => void
+  focusSection: (id: number | null) => void
+  zoomToSection: (sectionId: number) => void
+  zoomOutToAllSections: () => void
   reassignPostItToSection: (postItId: string, sectionId: number) => void
   deleteSection: (sectionId: number) => void
   updateCanvasSize: (width: number, height: number) => void
@@ -63,6 +68,8 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     width: window.innerWidth,
     height: window.innerHeight
   },
+  focusedSectionId: null,
+  isZoomedToSection: false,
 
   createPostIt: (x: number, y: number) => {
     const { currentBoard } = get()
@@ -201,6 +208,30 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     }))
   },
 
+  focusSection: (id: number | null) => {
+    set({ focusedSectionId: id })
+  },
+
+  zoomToSection: (sectionId: number) => {
+    const { currentBoard } = get()
+    if (!currentBoard) return
+
+    const section = currentBoard.sections.find(s => s.id === sectionId)
+    if (!section) return
+
+    set({ 
+      focusedSectionId: sectionId,
+      isZoomedToSection: true 
+    })
+  },
+
+  zoomOutToAllSections: () => {
+    set({ 
+      focusedSectionId: null,
+      isZoomedToSection: false 
+    })
+  },
+
   reassignPostItToSection: (postItId: string, sectionId: number) => {
     const { currentBoard } = get()
     if (!currentBoard) return
@@ -208,18 +239,30 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const targetSection = currentBoard.sections.find(s => s.id === sectionId)
     if (!targetSection) return
 
+    // Get all existing post-its in the target section (excluding the one being moved)
+    const existingPostItsInSection = currentBoard.postIts.filter(
+      (p: any) => p.sectionId === sectionId && p.id !== postItId
+    )
+
     set((state: any) => ({
       currentBoard: state.currentBoard ? {
         ...state.currentBoard,
         postIts: state.currentBoard.postIts.map((postIt: any) => {
           if (postIt.id === postItId) {
-            // Move post-it to target section and constrain position
-            const constrainedPos = constrainPostItToSection(postIt, targetSection)
+            // Find a non-overlapping position for the post-it in the target section
+            const nonOverlappingPos = findNonOverlappingPosition(
+              postIt,
+              targetSection,
+              existingPostItsInSection
+            )
+            
+            console.log('Moving post-it to section', sectionId, 'at position:', nonOverlappingPos)
+            
             return {
               ...postIt,
               sectionId,
-              x: constrainedPos.x,
-              y: constrainedPos.y,
+              x: nonOverlappingPos.x,
+              y: nonOverlappingPos.y,
               updatedAt: Date.now()
             }
           }

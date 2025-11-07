@@ -10,7 +10,9 @@ const Canvas = () => {
   const lastSectionCreateTime = useRef<number>(0)
   const { 
     currentBoard, 
-    canvasState, 
+    canvasState,
+    focusedSectionId,
+    isZoomedToSection,
     createPostIt, 
     updatePostIt, 
     deletePostIt, 
@@ -18,6 +20,9 @@ const Canvas = () => {
     createSection,
     updateSectionName,
     selectSection,
+    focusSection,
+    zoomToSection,
+    zoomOutToAllSections,
     reassignPostItToSection,
     deleteSection,
     updateCanvasSize
@@ -84,21 +89,66 @@ const Canvas = () => {
       return
     }
 
+    // If editing a section, don't re-render
+    if (editingSectionId) {
+      return
+    }
+
     const canvas = fabricCanvasRef.current
     canvas.clear()
 
-    // Render sections first
-    currentBoard.sections.forEach((section: any) => {
+    // Determine which sections to show
+    let sectionsToRender = currentBoard.sections
+    if (isZoomedToSection && focusedSectionId) {
+      // Only render the focused section when zoomed
+      sectionsToRender = currentBoard.sections.filter((section: any) => section.id === focusedSectionId)
+      
+      // Adjust the focused section to fill the canvas
+      if (sectionsToRender.length > 0) {
+        const originalSection = sectionsToRender[0]
+        sectionsToRender = [{
+          ...originalSection,
+          x: 0,
+          y: 0,
+          width: window.innerWidth,
+          height: window.innerHeight
+        }]
+      }
+    }
+
+    // Render sections
+    sectionsToRender.forEach((section: any) => {
       createFabricSection(canvas, section)
     })
 
-    // Then render post-its
-    currentBoard.postIts.forEach((postIt: any) => {
+    // Render post-its (filter to focused section when zoomed)
+    let postItsToRender = currentBoard.postIts
+    if (isZoomedToSection && focusedSectionId) {
+      postItsToRender = currentBoard.postIts.filter((postIt: any) => postIt.sectionId === focusedSectionId)
+      
+      // Scale and reposition post-its for the zoomed view
+      const originalSection = currentBoard.sections.find((s: any) => s.id === focusedSectionId)
+      if (originalSection) {
+        const scaleX = window.innerWidth / originalSection.width
+        const scaleY = window.innerHeight / originalSection.height
+        const scale = Math.min(scaleX, scaleY)
+        
+        postItsToRender = postItsToRender.map((postIt: any) => ({
+          ...postIt,
+          x: (postIt.x - originalSection.x) * scale,
+          y: (postIt.y - originalSection.y) * scale,
+          width: postIt.width * scale,
+          height: postIt.height * scale
+        }))
+      }
+    }
+
+    postItsToRender.forEach((postIt: any) => {
       createFabricPostIt(canvas, postIt)
     })
 
     canvas.renderAll()
-  }, [currentBoard?.postIts, currentBoard?.sections, isEditing])
+  }, [currentBoard?.postIts, currentBoard?.sections, isEditing, isZoomedToSection, focusedSectionId, editingSectionId])
 
   // Handle window resize
   useEffect(() => {
@@ -116,18 +166,31 @@ const Canvas = () => {
   }, [updateCanvasSize])
 
   const createFabricSection = (canvas: fabric.Canvas, section: any) => {
-    // Create section boundary
+    // Create section boundary with different style if focused
+    const isFocused = focusedSectionId === section.id
     const sectionBorder = new fabric.Rect({
       left: section.x,
       top: section.y,
       width: section.width,
       height: section.height,
       fill: 'transparent',
-      stroke: '#ddd',
-      strokeWidth: 2,
-      strokeDashArray: [5, 5],
+      stroke: isFocused ? '#4ECDC4' : '#ddd',
+      strokeWidth: isFocused ? 3 : 2,
+      strokeDashArray: isFocused ? [] : [5, 5],
       selectable: false,
-      evented: false
+      evented: true
+    })
+
+    // Add custom properties to identify this as a section background
+    ;(sectionBorder as any).sectionId = section.id
+    ;(sectionBorder as any).isSectionBackground = true
+
+    // Handle section background clicks to focus the section
+    sectionBorder.on('mousedown', (e: any) => {
+      if (e.e.detail === 1) { // Single click on section background
+        console.log('Section background clicked:', section.id)
+        focusSection(section.id)
+      }
     })
 
     // Create section title
@@ -136,7 +199,7 @@ const Canvas = () => {
       top: section.y + 5,
       fontSize: 14,
       fontFamily: 'Arial',
-      fill: '#666',
+      fill: isFocused ? '#4ECDC4' : '#666',
       backgroundColor: '#fff',
       selectable: false,
       evented: true
@@ -765,6 +828,22 @@ const Canvas = () => {
         }
       }
 
+      // Section zoom with Shift+Up/Down
+      if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !currentlyEditing && !editingSectionId) {
+        e.preventDefault()
+        
+        if (e.key === 'ArrowUp') {
+          // Zoom into focused section, or section 1 if none focused
+          const targetSectionId = focusedSectionId || 1
+          console.log('Shift+Up: Zooming to section', targetSectionId)
+          zoomToSection(targetSectionId)
+        } else if (e.key === 'ArrowDown') {
+          // Zoom out to show all sections
+          console.log('Shift+Down: Zooming out to all sections')
+          zoomOutToAllSections()
+        }
+      }
+
       // Delete sections with Ctrl+Alt+1-4
       if (e.ctrlKey && e.altKey && ['1', '2', '3', '4'].includes(e.key) && !currentlyEditing && !editingSectionId) {
         e.preventDefault()
@@ -778,20 +857,21 @@ const Canvas = () => {
       console.log('Removing keyboard event listener')
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [deletePostIt, selectPostIt, createPostIt, createSection, reassignPostItToSection, deleteSection, editingSectionId])
+  }, [deletePostIt, selectPostIt, createPostIt, createSection, reassignPostItToSection, deleteSection, focusedSectionId, zoomToSection, zoomOutToAllSections, editingSectionId])
 
   return (
     <div className="w-full h-full">
       <canvas ref={canvasRef} className="block" />
       
       {/* Instructions overlay */}
-      <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-2 rounded text-sm">
-        <div>Double-click on canvas to create post-it</div>
+      <div className="absolute bottom-4 left-4 bg-black/25 text-white px-3 py-2 rounded text-sm">
+        <div>N: create post-it • Click section background to focus section</div>
         <div>Double-click post-it to edit text • E: edit selected post-it</div>
         <div>Double-click section title to rename</div>
         <div>Ctrl+Space: new section • Ctrl+1-4: move post-it to section</div>
         <div>Ctrl+Alt+1-4: delete section • Delete: remove selected post-it</div>
         <div>Ctrl+Arrow Keys: navigate to nearest post-it in direction</div>
+        <div>Shift+Up: zoom to focused section • Shift+Down: show all sections</div>
       </div>
     </div>
   )
