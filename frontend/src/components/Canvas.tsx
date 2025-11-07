@@ -361,13 +361,17 @@ const Canvas = () => {
     setIsEditing(true)
     
     try {
-      // Remove the rect temporarily
-      canvas.getObjects().forEach(obj => {
-        if ((obj as any).postItId === postIt.id) {
-          canvas.remove(obj)
-        }
+      // Remove only the specific post-it being edited, preserve all others
+      const objectsToRemove = canvas.getObjects().filter(obj => (obj as any).postItId === postIt.id)
+      console.log('Removing objects for editing:', objectsToRemove.length)
+      
+      objectsToRemove.forEach(obj => {
+        canvas.remove(obj)
       })
+      
+      // Force canvas to re-render remaining objects after removal
       canvas.renderAll()
+      console.log('Remaining objects on canvas:', canvas.getObjects().length)
       
       console.log('Removed post-it from canvas, creating overlay')
       
@@ -392,12 +396,13 @@ const Canvas = () => {
       overlay.style.padding = '5px'
       overlay.style.resize = 'none'
       overlay.style.outline = 'none'
-      overlay.style.backgroundColor = 'white'
+      overlay.style.backgroundColor = postIt.color // Use post-it's background color
       overlay.style.color = '#333'
       overlay.style.zIndex = '9999'
       overlay.style.pointerEvents = 'auto'
       overlay.style.userSelect = 'text'
       overlay.style.cursor = 'text'
+      overlay.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)' // Add shadow to match post-it
       overlay.value = postIt.text
       overlay.setAttribute('data-post-it-id', postIt.id)
       overlay.disabled = false
@@ -598,12 +603,70 @@ const Canvas = () => {
         createSection()
       }
 
-      // Reassign post-it to sections with Ctrl+1-4
+      // Edit post-it text with 'E' key
+      if ((e.key === 'e' || e.key === 'E') && !currentlyEditing && !editingSectionId && activeObject && (activeObject as any).postItId) {
+        e.preventDefault()
+        console.log('E key pressed, starting text edit for post-it:', (activeObject as any).postItId)
+        const postItId = (activeObject as any).postItId
+        
+        // Debug the current board state
+        console.log('Current board:', currentBoard)
+        console.log('Current board post-its:', currentBoard?.postIts)
+        console.log('Looking for post-it ID:', postItId)
+        
+        const postIt = currentBoard?.postIts.find((p: any) => p.id === postItId)
+        if (postIt) {
+          console.log('Found post-it, entering edit mode:', postIt)
+          enterTextEditMode(canvas, postIt, activeObject as any)
+        } else {
+          console.log('Post-it not found in currentBoard')
+          
+          // Try to get post-it data directly from the fabric object
+          const fabricPostIt = activeObject as any
+          if (fabricPostIt.postItText !== undefined) {
+            console.log('Using fabric object data as fallback')
+            // Create a temporary post-it object from fabric data
+            const tempPostIt = {
+              id: postItId,
+              text: fabricPostIt.postItText || 'Double-click to edit',
+              x: fabricPostIt.left || 0,
+              y: fabricPostIt.top || 0,
+              width: fabricPostIt.width || 200,
+              height: fabricPostIt.height || 150,
+              color: fabricPostIt.fill || '#FFE066',
+              fontSize: 14,
+              sectionId: 1, // Default section
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }
+            console.log('Created temp post-it:', tempPostIt)
+            enterTextEditMode(canvas, tempPostIt, activeObject as any)
+          } else {
+            console.log('No fallback data available')
+          }
+        }
+      }
+
+      // Reassign post-it to sections with Ctrl+1-4 (keep focus)
       if (e.ctrlKey && !e.altKey && ['1', '2', '3', '4'].includes(e.key) && activeObject && (activeObject as any).postItId) {
         e.preventDefault()
         const sectionId = parseInt(e.key)
         const postItId = (activeObject as any).postItId
+        
+        // Store the active object reference before reassigning
+        const currentActiveObject = activeObject
+        
         reassignPostItToSection(postItId, sectionId)
+        
+        // Reselect the object after reassignment to maintain focus
+        setTimeout(() => {
+          // Find the updated object with the same postItId
+          const updatedObject = canvas.getObjects().find((obj: any) => obj.postItId === postItId)
+          if (updatedObject) {
+            canvas.setActiveObject(updatedObject)
+            canvas.renderAll()
+          }
+        }, 50)
       }
 
       // Delete sections with Ctrl+Alt+1-4
@@ -628,7 +691,7 @@ const Canvas = () => {
       {/* Instructions overlay */}
       <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-2 rounded text-sm">
         <div>Double-click on canvas to create post-it</div>
-        <div>Double-click post-it to edit text</div>
+        <div>Double-click post-it to edit text • E: edit selected post-it</div>
         <div>Double-click section title to rename</div>
         <div>Ctrl+Space: new section • Ctrl+1-4: move post-it to section</div>
         <div>Ctrl+Alt+1-4: delete section • Delete: remove selected post-it</div>
