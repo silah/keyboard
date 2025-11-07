@@ -23,7 +23,7 @@ app.get('/api/boards', (req: Request, res: Response) => {
     res.json(boards)
   } catch (error) {
     console.error('Error fetching boards:', error)
-    res.status(500).json({ error: 'Failed to fetch boards' })
+    return res.status(500).json({ error: 'Failed to fetch boards' })
   }
 })
 
@@ -40,7 +40,7 @@ app.get('/api/boards/:id', (req: Request, res: Response) => {
     res.json(board)
   } catch (error) {
     console.error('Error fetching board:', error)
-    res.status(500).json({ error: 'Failed to fetch board' })
+    return res.status(500).json({ error: 'Failed to fetch board' })
   }
 })
 
@@ -58,11 +58,15 @@ app.post('/api/boards', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Post-its must be an array' })
     }
     
+    if (!Array.isArray(boardData.sections)) {
+      return res.status(400).json({ error: 'Sections must be an array' })
+    }
+    
     const savedBoard = boardStorage.saveBoard(boardData)
     res.json(savedBoard)
   } catch (error) {
     console.error('Error saving board:', error)
-    res.status(500).json({ error: 'Failed to save board' })
+    return res.status(500).json({ error: 'Failed to save board' })
   }
 })
 
@@ -79,7 +83,7 @@ app.delete('/api/boards/:id', (req: Request, res: Response) => {
     res.json({ message: 'Board deleted successfully' })
   } catch (error) {
     console.error('Error deleting board:', error)
-    res.status(500).json({ error: 'Failed to delete board' })
+    return res.status(500).json({ error: 'Failed to delete board' })
   }
 })
 
@@ -98,19 +102,19 @@ app.get('/api/boards/:id/export', (req: Request, res: Response) => {
     res.json(board)
   } catch (error) {
     console.error('Error exporting board:', error)
-    res.status(500).json({ error: 'Failed to export board' })
+    return res.status(500).json({ error: 'Failed to export board' })
   }
 })
 
 // Error handling middleware
 app.use((error: Error, req: Request, res: Response, next: any) => {
   console.error('Unhandled error:', error)
-  res.status(500).json({ error: 'Internal server error' })
+  return res.status(500).json({ error: 'Internal server error' })
 })
 
 // 404 handler
 app.use((req: Request, res: Response) => {
-  res.status(404).json({ error: 'Not found' })
+  return res.status(404).json({ error: 'Not found' })
 })
 
 app.listen(port, () => {
