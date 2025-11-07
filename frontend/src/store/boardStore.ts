@@ -71,12 +71,20 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   focusedSectionId: null,
   isZoomedToSection: false,
 
-  createPostIt: (x: number, y: number) => {
-    const { currentBoard } = get()
+    createPostIt: (x: number, y: number) => {
+    const { currentBoard, focusedSectionId } = get()
     if (!currentBoard) return
 
     // Determine which section this post-it should belong to
-    const targetSection = getSectionForPosition(currentBoard.sections, x, y) || currentBoard.sections[0]
+    // If a section is focused, use that section, otherwise determine by position
+    let targetSection: any
+    if (focusedSectionId) {
+      targetSection = currentBoard.sections.find(s => s.id === focusedSectionId)
+    }
+    
+    if (!targetSection) {
+      targetSection = getSectionForPosition(currentBoard.sections, x, y) || currentBoard.sections[0]
+    }
     
     const newPostIt: PostIt = {
       id: Math.random().toString(36).substring(7),
@@ -92,17 +100,33 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       updatedAt: Date.now()
     }
 
-    // Constrain to section bounds
-    const constrainedPos = constrainPostItToSection(newPostIt, targetSection)
-    newPostIt.x = constrainedPos.x
-    newPostIt.y = constrainedPos.y
+    // Get all existing post-its in the target section
+    const existingPostItsInSection = currentBoard.postIts.filter(
+      (p: any) => p.sectionId === targetSection.id
+    )
+
+    // Find a non-overlapping position for the new post-it
+    const nonOverlappingPos = findNonOverlappingPosition(
+      newPostIt,
+      targetSection,
+      existingPostItsInSection
+    )
+    
+    newPostIt.x = nonOverlappingPos.x
+    newPostIt.y = nonOverlappingPos.y
+    
+    console.log('Creating new post-it in', focusedSectionId ? `focused section ${focusedSectionId}` : 'position-based section', 'at position:', nonOverlappingPos)
 
     set((state) => ({
       currentBoard: state.currentBoard ? {
         ...state.currentBoard,
         postIts: [...state.currentBoard.postIts, newPostIt],
         updatedAt: Date.now()
-      } : null
+      } : null,
+      canvasState: {
+        ...state.canvasState,
+        selectedPostItId: newPostIt.id // Automatically select the newly created post-it
+      }
     }))
   },
 

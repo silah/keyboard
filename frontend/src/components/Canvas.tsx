@@ -27,7 +27,6 @@ const Canvas = () => {
     deleteSection,
     updateCanvasSize
   } = useBoardStore()
-  const [isEditing, setIsEditing] = useState(false)
   const [editingSectionId, setEditingSectionId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -53,7 +52,7 @@ const Canvas = () => {
 
     // Handle double-click to create new post-it
     canvas.on('mouse:dblclick', (e) => {
-      if (!e.target && !isEditing) {
+      if (!e.target) {
         const pointer = canvas.getPointer(e.e)
         createPostIt(pointer.x - 100, pointer.y - 75) // Center the post-it on click
       }
@@ -77,17 +76,11 @@ const Canvas = () => {
       window.removeEventListener('resize', handleResize)
       canvas.dispose()
     }
-  }, [createPostIt, selectPostIt, isEditing])
+  }, [createPostIt, selectPostIt])
 
   // Sync sections and post-its from store to canvas
   useEffect(() => {
     if (!fabricCanvasRef.current || !currentBoard) return
-
-    // Don't clear canvas during text editing
-    if (isEditing) {
-      console.log('Skipping canvas sync during text editing')
-      return
-    }
 
     // If editing a section, don't re-render
     if (editingSectionId) {
@@ -95,6 +88,7 @@ const Canvas = () => {
     }
 
     const canvas = fabricCanvasRef.current
+    
     canvas.clear()
 
     // Determine which sections to show
@@ -148,7 +142,7 @@ const Canvas = () => {
     })
 
     canvas.renderAll()
-  }, [currentBoard?.postIts, currentBoard?.sections, isEditing, isZoomedToSection, focusedSectionId, editingSectionId])
+  }, [currentBoard?.postIts, currentBoard?.sections, isZoomedToSection, focusedSectionId, editingSectionId])
 
   // Handle window resize
   useEffect(() => {
@@ -164,6 +158,28 @@ const Canvas = () => {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [updateCanvasSize])
+
+  // Sync canvas selection with store selection
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current
+    if (!canvas || !canvasState.selectedPostItId) return
+
+    // Small delay to ensure fabric object is created
+    const selectTimer = setTimeout(() => {
+      // Find the fabric object with the matching postItId
+      const targetObject = canvas.getObjects().find((obj: any) => 
+        obj.postItId === canvasState.selectedPostItId
+      )
+
+      if (targetObject) {
+        canvas.setActiveObject(targetObject)
+        canvas.renderAll()
+        console.log('Auto-selected newly created post-it:', canvasState.selectedPostItId)
+      }
+    }, 50)
+
+    return () => clearTimeout(selectTimer)
+  }, [canvasState.selectedPostItId])
 
   const createFabricSection = (canvas: fabric.Canvas, section: any) => {
     // Create section boundary with different style if focused
@@ -421,7 +437,6 @@ const Canvas = () => {
 
   const enterTextEditMode = (canvas: fabric.Canvas, postIt: PostIt, rectObj: any) => {
     console.log('Entering text edit mode for post-it:', postIt.id)
-    setIsEditing(true)
     
     try {
       // Remove only the specific post-it being edited, preserve all others
@@ -574,12 +589,10 @@ const Canvas = () => {
                   console.log('Canvas reinitialized')
                 }
                 
-                setIsEditing(false)
                 return
               }
               
               createFabricPostIt(currentCanvas, { ...postIt, text: updatedText })
-              setIsEditing(false)
               
               // Use requestAnimationFrame to ensure proper timing
               requestAnimationFrame(() => {
@@ -592,18 +605,15 @@ const Canvas = () => {
               })
             } catch (error) {
               console.error('Error recreating post-it after text edit:', error)
-              setIsEditing(false)
             }
           }, 50)
         } catch (error) {
           console.error('Error completing text edit:', error)
-          setIsEditing(false)
         }
       }
       
     } catch (error) {
       console.error('Error in enterTextEditMode:', error)
-      setIsEditing(false)
       // Try to recreate the post-it if something goes wrong
       setTimeout(() => {
         createFabricPostIt(canvas, postIt)
