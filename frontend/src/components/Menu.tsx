@@ -25,28 +25,17 @@ const Menu = ({ isVisible, onClose }: MenuProps) => {
     
     setIsExporting(true)
     
-    // Create CSV content
-    const csvContent = [
-      ['ID', 'Text', 'X', 'Y', 'Width', 'Height', 'Color', 'Created', 'Updated'],
-      ...currentBoard.postIts.map(postIt => [
-        postIt.id,
-        `"${postIt.text.replace(/"/g, '""')}"`, // Escape quotes
-        postIt.x.toString(),
-        postIt.y.toString(),
-        postIt.width.toString(),
-        postIt.height.toString(),
-        postIt.color,
-        new Date(postIt.createdAt).toISOString(),
-        new Date(postIt.updatedAt).toISOString()
-      ])
-    ].map(row => row.join(',')).join('\n')
+    // Create simple CSV content with just text (one per line)
+    const csvContent = currentBoard.postIts.map(postIt => 
+      `"${postIt.text.replace(/"/g, '""')}"` // Escape quotes in text
+    ).join('\n')
 
     // Create and download file
     const blob = new Blob([csvContent], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${currentBoard.name}-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `${currentBoard.name}-text-only-${new Date().toISOString().split('T')[0]}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
