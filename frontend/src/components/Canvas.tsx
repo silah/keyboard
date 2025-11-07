@@ -669,6 +669,98 @@ const Canvas = () => {
         }, 50)
       }
 
+      // Directional focus navigation with Ctrl+Arrow keys
+      if (e.ctrlKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && activeObject && (activeObject as any).postItId && !currentlyEditing && !editingSectionId) {
+        e.preventDefault()
+        
+        // Get current post-it position
+        const currentPos = {
+          x: activeObject.left || 0,
+          y: activeObject.top || 0,
+          centerX: (activeObject.left || 0) + (activeObject.width || 0) / 2,
+          centerY: (activeObject.top || 0) + (activeObject.height || 0) / 2
+        }
+        
+        // Get all post-it objects except the current one
+        const allPostIts = canvas.getObjects().filter((obj: any) => 
+          obj.postItId && obj.postItId !== (activeObject as any).postItId
+        )
+        
+        console.log('Directional navigation:', e.key, 'from position:', currentPos, 'checking', allPostIts.length, 'other post-its')
+        
+        let targetPostIt = null
+        let minDistance = Infinity
+        
+        allPostIts.forEach((postIt: any) => {
+          const targetPos = {
+            x: postIt.left || 0,
+            y: postIt.top || 0,
+            centerX: (postIt.left || 0) + (postIt.width || 0) / 2,
+            centerY: (postIt.top || 0) + (postIt.height || 0) / 2
+          }
+          
+          let isValidDirection = false
+          let distance = 0
+          
+          switch (e.key) {
+            case 'ArrowUp':
+              // Target must be above (lower Y value) and relatively aligned
+              isValidDirection = targetPos.centerY < currentPos.centerY - 20 // 20px threshold
+              if (isValidDirection) {
+                // Prioritize vertical distance, but consider horizontal alignment
+                const verticalDistance = currentPos.centerY - targetPos.centerY
+                const horizontalOffset = Math.abs(currentPos.centerX - targetPos.centerX)
+                distance = verticalDistance + (horizontalOffset * 0.3) // Weight horizontal offset less
+              }
+              break
+              
+            case 'ArrowDown':
+              // Target must be below (higher Y value) and relatively aligned
+              isValidDirection = targetPos.centerY > currentPos.centerY + 20 // 20px threshold
+              if (isValidDirection) {
+                const verticalDistance = targetPos.centerY - currentPos.centerY
+                const horizontalOffset = Math.abs(currentPos.centerX - targetPos.centerX)
+                distance = verticalDistance + (horizontalOffset * 0.3)
+              }
+              break
+              
+            case 'ArrowLeft':
+              // Target must be to the left (lower X value) and relatively aligned
+              isValidDirection = targetPos.centerX < currentPos.centerX - 20 // 20px threshold
+              if (isValidDirection) {
+                const horizontalDistance = currentPos.centerX - targetPos.centerX
+                const verticalOffset = Math.abs(currentPos.centerY - targetPos.centerY)
+                distance = horizontalDistance + (verticalOffset * 0.3)
+              }
+              break
+              
+            case 'ArrowRight':
+              // Target must be to the right (higher X value) and relatively aligned
+              isValidDirection = targetPos.centerX > currentPos.centerX + 20 // 20px threshold
+              if (isValidDirection) {
+                const horizontalDistance = targetPos.centerX - currentPos.centerX
+                const verticalOffset = Math.abs(currentPos.centerY - targetPos.centerY)
+                distance = horizontalDistance + (verticalOffset * 0.3)
+              }
+              break
+          }
+          
+          if (isValidDirection && distance < minDistance) {
+            minDistance = distance
+            targetPostIt = postIt
+          }
+        })
+        
+        if (targetPostIt) {
+          console.log('Found target post-it:', (targetPostIt as any).postItId, 'at distance:', minDistance)
+          canvas.setActiveObject(targetPostIt)
+          canvas.renderAll()
+          selectPostIt((targetPostIt as any).postItId)
+        } else {
+          console.log('No valid target found in direction:', e.key)
+        }
+      }
+
       // Delete sections with Ctrl+Alt+1-4
       if (e.ctrlKey && e.altKey && ['1', '2', '3', '4'].includes(e.key) && !currentlyEditing && !editingSectionId) {
         e.preventDefault()
@@ -695,6 +787,7 @@ const Canvas = () => {
         <div>Double-click section title to rename</div>
         <div>Ctrl+Space: new section • Ctrl+1-4: move post-it to section</div>
         <div>Ctrl+Alt+1-4: delete section • Delete: remove selected post-it</div>
+        <div>Ctrl+Arrow Keys: navigate to nearest post-it in direction</div>
       </div>
     </div>
   )
