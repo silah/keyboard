@@ -1,8 +1,11 @@
 import { create } from 'zustand'
-import { Board, PostIt, CanvasState, Section } from '../types'
+import { Board, PostIt, CanvasState } from '../types'
 import { calculateSectionLayout, getSectionForPosition, constrainPostItToSection, repositionPostItForNewSection } from '../utils/sectionLayout'
 
 const COLORS = ['#FFE066', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57']
+
+// Global flag to prevent concurrent section creation
+let isCreatingSection = false
 
 interface BoardStore {
   currentBoard: Board | null
@@ -62,7 +65,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   createPostIt: (x: number, y: number) => {
-    const { currentBoard, canvasSize } = get()
+    const { currentBoard } = get()
     if (!currentBoard) return
 
     // Determine which section this post-it should belong to
@@ -129,8 +132,22 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const { currentBoard, canvasSize } = get()
     if (!currentBoard || currentBoard.sections.length >= 4) return
 
+    // Check and set the global flag to prevent concurrent calls
+    if (isCreatingSection) {
+      console.log('Section creation already in progress, skipping')
+      return
+    }
+    isCreatingSection = true
+
     const oldSections = currentBoard.sections
     const newSectionCount = currentBoard.sections.length + 1
+    
+    console.log('Creating section:', { 
+      currentSectionCount: currentBoard.sections.length, 
+      newSectionCount,
+      currentSectionIds: currentBoard.sections.map(s => s.id) 
+    })
+    
     const newSections = calculateSectionLayout(newSectionCount, canvasSize.width, canvasSize.height)
     
     // Preserve section names
@@ -159,6 +176,11 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         updatedAt: Date.now()
       } : null
     }))
+    
+    // Reset the global flag after completion
+    setTimeout(() => {
+      isCreatingSection = false
+    }, 100)
   },
 
   updateSectionName: (id: number, name: string) => {
@@ -211,6 +233,12 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   deleteSection: (sectionId: number) => {
     const { currentBoard, canvasSize } = get()
     if (!currentBoard || currentBoard.sections.length <= 1) return // Can't delete the last section
+
+    console.log('Deleting section:', { 
+      sectionId, 
+      currentSections: currentBoard.sections.map(s => s.id),
+      sectionCount: currentBoard.sections.length 
+    })
 
     // Remove the section and all post-its that belong to it
     const remainingSections = currentBoard.sections.filter((s: any) => s.id !== sectionId)
