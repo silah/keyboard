@@ -222,15 +222,17 @@ const Canvas = () => {
     // Add custom resize handles using separate rect objects
     const createResizeHandle = (position: string) => {
       const handle = new fabric.Rect({
-        width: 8,
-        height: 8,
-        fill: '#333',
-        stroke: '#fff',
-        strokeWidth: 1,
+        width: 12,
+        height: 12,
+        fill: '#fff',
+        stroke: '#333',
+        strokeWidth: 2,
         selectable: true,
         hasControls: false,
         hasBorders: false,
-        visible: false // Initially hidden
+        visible: false, // Initially hidden
+        hoverCursor: 'nw-resize',
+        moveCursor: 'nw-resize'
       })
       
       ;(handle as any).isResizeHandle = true
@@ -247,18 +249,21 @@ const Canvas = () => {
 
     // Show/hide handles when post-it is selected/deselected
     rect.on('selected', () => {
+      console.log('Post-it selected, showing resize handle')
       Object.values(handles).forEach(handle => {
         handle.set({ visible: true })
         // Position handle at bottom-right corner
         handle.set({
-          left: rect.left! + rect.width! - 4,
-          top: rect.top! + rect.height! - 4
+          left: rect.left! + rect.width! - 6,
+          top: rect.top! + rect.height! - 6
         })
+        handle.setCoords()
       })
       canvas.renderAll()
     })
 
     rect.on('deselected', () => {
+      console.log('Post-it deselected, hiding resize handle')
       Object.values(handles).forEach(handle => {
         handle.set({ visible: false })
       })
@@ -269,19 +274,23 @@ const Canvas = () => {
     Object.values(handles).forEach(handle => {
       handle.on('moving', () => {
         if ((handle as any).isResizeHandle && rect) {
-          const newWidth = Math.max(100, handle.left! - rect.left! + 4)
-          const newHeight = Math.max(80, handle.top! - rect.top! + 4)
+          console.log('Resize handle being dragged')
+          const newWidth = Math.max(100, handle.left! - rect.left! + 6)
+          const newHeight = Math.max(80, handle.top! - rect.top! + 6)
           
           rect.set({
             width: newWidth,
             height: newHeight
           })
           
-          // Update the handle position
+          // Update the handle position to stay at corner
           handle.set({
-            left: rect.left! + rect.width! - 4,
-            top: rect.top! + rect.height! - 4
+            left: rect.left! + rect.width! - 6,
+            top: rect.top! + rect.height! - 6
           })
+          
+          rect.setCoords()
+          handle.setCoords()
           
           // Update post-it data
           updatePostIt(postIt.id, {
@@ -291,6 +300,12 @@ const Canvas = () => {
           
           canvas.renderAll()
         }
+      })
+      
+      // Also handle mousedown to ensure it's recognized as a resize operation
+      handle.on('mousedown', (e) => {
+        console.log('Resize handle clicked')
+        e.e.stopPropagation()
       })
     })
 
