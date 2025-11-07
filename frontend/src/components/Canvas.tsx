@@ -704,48 +704,52 @@ const Canvas = () => {
           
           switch (e.key) {
             case 'ArrowUp':
-              // Target must be above (lower Y value) and relatively aligned
+              // Target must be above (lower Y value)
               isValidDirection = targetPos.centerY < currentPos.centerY - 20 // 20px threshold
               if (isValidDirection) {
-                // Prioritize vertical distance, but consider horizontal alignment
                 const verticalDistance = currentPos.centerY - targetPos.centerY
                 const horizontalOffset = Math.abs(currentPos.centerX - targetPos.centerX)
-                distance = verticalDistance + (horizontalOffset * 0.3) // Weight horizontal offset less
+                distance = verticalDistance + (horizontalOffset * 0.3)
+                console.log('ArrowUp candidate:', (postIt as any).postItId, 'vertical:', verticalDistance, 'horizontal:', horizontalOffset, 'total:', distance)
               }
               break
               
             case 'ArrowDown':
-              // Target must be below (higher Y value) and relatively aligned
+              // Target must be below (higher Y value)
               isValidDirection = targetPos.centerY > currentPos.centerY + 20 // 20px threshold
               if (isValidDirection) {
                 const verticalDistance = targetPos.centerY - currentPos.centerY
                 const horizontalOffset = Math.abs(currentPos.centerX - targetPos.centerX)
                 distance = verticalDistance + (horizontalOffset * 0.3)
+                console.log('ArrowDown candidate:', (postIt as any).postItId, 'vertical:', verticalDistance, 'horizontal:', horizontalOffset, 'total:', distance)
               }
               break
               
             case 'ArrowLeft':
-              // Target must be to the left (lower X value) and relatively aligned
+              // Target must be to the left (lower X value)
               isValidDirection = targetPos.centerX < currentPos.centerX - 20 // 20px threshold
               if (isValidDirection) {
                 const horizontalDistance = currentPos.centerX - targetPos.centerX
                 const verticalOffset = Math.abs(currentPos.centerY - targetPos.centerY)
                 distance = horizontalDistance + (verticalOffset * 0.3)
+                console.log('ArrowLeft candidate:', (postIt as any).postItId, 'horizontal:', horizontalDistance, 'vertical:', verticalOffset, 'total:', distance)
               }
               break
               
             case 'ArrowRight':
-              // Target must be to the right (higher X value) and relatively aligned
+              // Target must be to the right (higher X value)
               isValidDirection = targetPos.centerX > currentPos.centerX + 20 // 20px threshold
               if (isValidDirection) {
                 const horizontalDistance = targetPos.centerX - currentPos.centerX
                 const verticalOffset = Math.abs(currentPos.centerY - targetPos.centerY)
                 distance = horizontalDistance + (verticalOffset * 0.3)
+                console.log('ArrowRight candidate:', (postIt as any).postItId, 'horizontal:', horizontalDistance, 'vertical:', verticalOffset, 'total:', distance, 'targetX:', targetPos.centerX, 'currentX:', currentPos.centerX)
               }
               break
           }
           
           if (isValidDirection && distance < minDistance) {
+            console.log('New best candidate for', e.key, ':', (postIt as any).postItId, 'distance:', distance, 'previous best:', minDistance)
             minDistance = distance
             targetPostIt = postIt
           }
