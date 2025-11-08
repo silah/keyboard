@@ -158,6 +158,70 @@ const Canvas = () => {
 
     canvas.renderAll()
 
+    // Add a simple, reliable text renderer that draws text on top of everything
+    const renderAllTexts = () => {
+      const ctx = canvas.getContext()
+      if (!ctx) return
+
+      try {
+        // Clear canvas completely first to prevent text overlapping
+        ctx.save()
+        
+        // Draw text for all post-its on top of everything
+        canvas.getObjects().forEach((obj: any) => {
+          if (obj.postItId && obj.visible) {
+            // Skip text rendering if this post-it is currently being edited
+            const isBeingEdited = !obj.selectable && !obj.evented
+            if (isBeingEdited) {
+              console.log('Skipping text rendering for post-it being edited:', obj.postItId)
+              return
+            }
+            
+            const postIt = currentBoard?.postIts.find((p: any) => p.id === obj.postItId)
+            if (postIt && postIt.text) {
+              // Update the fabric object's stored text to match the current store data
+              obj.postItText = postIt.text
+              
+              // Don't clear the area - just draw text directly over the post-it background
+              ctx.font = `${postIt.fontSize}px Arial`
+              ctx.fillStyle = '#333'
+              ctx.textAlign = 'left'
+              ctx.textBaseline = 'top'
+              ctx.globalCompositeOperation = 'source-over'
+              
+              // Simple text rendering - use actual text from store, not fabric object
+              const lines = postIt.text.split('\n')
+              const lineHeight = postIt.fontSize * 1.2
+              
+              lines.forEach((line, index) => {
+                const x = (obj.left || 0) + 10
+                const y = (obj.top || 0) + 10 + (index * lineHeight)
+                
+                // Clip to post-it bounds
+                if (y < (obj.top || 0) + (obj.height || 0) - 10) {
+                  ctx.fillText(line.substring(0, 20), x, y) // Limit text length
+                }
+              })
+            }
+          }
+        })
+        
+        ctx.restore()
+      } catch (error) {
+        console.error('Error rendering text:', error)
+      }
+    }
+
+    // Render text after canvas renders
+    canvas.on('after:render', renderAllTexts)
+
+    // Clean up any existing text overlays when canvas rebuilds
+    document.querySelectorAll('[data-post-it-text]').forEach(overlay => {
+      if (overlay.parentElement) {
+        overlay.parentElement.removeChild(overlay)
+      }
+    })
+
     // Restore selection after canvas reconstruction (only if we had a selection)
     if (currentlySelectedPostItId) {
       setTimeout(() => {
@@ -477,76 +541,19 @@ const Canvas = () => {
     
     // Add resize handles next 
     Object.values(handles).forEach(handle => canvas.add(handle))
-    
-    // Use canvas drawing approach with proper selection awareness
-    const renderPostItText = () => {
-      const ctx = canvas.getContext()
-      if (ctx && rect.visible && canvas.getObjects().includes(rect)) {
-        try {
-          ctx.save()
-          ctx.font = `${postIt.fontSize}px Arial`
-          ctx.fillStyle = '#333'
-          ctx.textAlign = 'left'
-          ctx.textBaseline = 'top'
-          
-          // Ensure text is always visible regardless of selection
-          ctx.globalCompositeOperation = 'source-over'
-          
-          // Word wrap the text
-          const words = postIt.text.split(' ')
-          const maxWidth = rect.width! - 20
-          const lineHeight = postIt.fontSize * 1.2
-          let line = ''
-          let y = rect.top! + 10
-          
-          for (const word of words) {
-            const testLine = line + word + ' '
-            const metrics = ctx.measureText(testLine)
-            if (metrics.width > maxWidth && line !== '') {
-              ctx.fillText(line, rect.left! + 10, y)
-              line = word + ' '
-              y += lineHeight
-            } else {
-              line = testLine
-            }
-          }
-          ctx.fillText(line, rect.left! + 10, y)
-          ctx.restore()
-        } catch (textRenderError) {
-          console.error('Error rendering post-it text:', textRenderError)
-        }
-      }
-    }
-    
-    // Render text after everything else to ensure it's on top
-    canvas.on('after:render', renderPostItText)
-    
-    // Also render on selection changes to ensure visibility during selection
-    canvas.on('selection:created', renderPostItText)
-    canvas.on('selection:updated', renderPostItText)
-    canvas.on('selection:cleared', renderPostItText)
-    
-    // Store reference to clean up later if needed
-    ;(rect as any).textRenderer = renderPostItText
   }
 
   const enterTextEditMode = (canvas: fabric.Canvas, postIt: PostIt, rectObj: any) => {
     console.log('Entering text edit mode for post-it:', postIt.id)
     
     try {
-      // Remove only the specific post-it being edited, preserve all others
-      const objectsToRemove = canvas.getObjects().filter(obj => (obj as any).postItId === postIt.id)
-      console.log('Removing objects for editing:', objectsToRemove.length)
-      
-      objectsToRemove.forEach(obj => {
-        canvas.remove(obj)
-      })
-      
-      // Force canvas to re-render remaining objects after removal
+      // Don't remove the post-it from canvas - keep it visible as background
+      // Instead, just make it non-interactive during editing
+      rectObj.selectable = false
+      rectObj.evented = false
       canvas.renderAll()
-      console.log('Remaining objects on canvas:', canvas.getObjects().length)
       
-      console.log('Removed post-it from canvas, creating overlay')
+      console.log('Made post-it non-interactive, creating overlay')
       
       // Get canvas element and its position
       const canvasElement = canvas.getElement()
@@ -556,26 +563,32 @@ const Canvas = () => {
       console.log('Post-it position:', { x: postIt.x, y: postIt.y, width: postIt.width, height: postIt.height })
       
       // Create a simple overlay input
+      // Create overlay textarea with comprehensive styling
       const overlay = document.createElement('textarea')
-      overlay.style.position = 'fixed' // Use fixed instead of absolute
+      overlay.className = 'post-it-editor' // Add a class for easier targeting
+      overlay.style.position = 'absolute'
       overlay.style.left = `${canvasRect.left + postIt.x + 10}px`
       overlay.style.top = `${canvasRect.top + postIt.y + 10}px`
       overlay.style.width = `${postIt.width - 20}px`
       overlay.style.height = `${postIt.height - 20}px`
       overlay.style.fontSize = `${postIt.fontSize}px`
       overlay.style.fontFamily = 'Arial'
-      overlay.style.border = '2px solid #333'
+      overlay.style.border = 'none'
       overlay.style.borderRadius = '3px'
       overlay.style.padding = '5px'
       overlay.style.resize = 'none'
       overlay.style.outline = 'none'
-      overlay.style.backgroundColor = postIt.color // Use post-it's background color
+      overlay.style.background = 'transparent' // Make completely transparent
+      overlay.style.backgroundColor = 'transparent' // Ensure transparency
       overlay.style.color = '#333'
       overlay.style.zIndex = '9999'
       overlay.style.pointerEvents = 'auto'
       overlay.style.userSelect = 'text'
       overlay.style.cursor = 'text'
-      overlay.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)' // Add shadow to match post-it
+      overlay.style.boxShadow = 'none'
+      overlay.style.appearance = 'none'
+      overlay.style.webkitAppearance = 'none'
+      overlay.style.boxShadow = 'none' // Remove shadow to make it blend better
       overlay.value = postIt.text
       overlay.setAttribute('data-post-it-id', postIt.id)
       overlay.disabled = false
@@ -656,36 +669,27 @@ const Canvas = () => {
             console.log('Removed overlay from DOM')
           }
           
+          // Restore post-it interactivity
+          rectObj.selectable = true
+          rectObj.evented = true
+          canvas.setActiveObject(rectObj)
+          canvas.renderAll()
+          
           // Update the post-it data
           updatePostIt(postIt.id, { text: updatedText })
           console.log('Updated post-it text:', updatedText)
           
-          // Re-create the post-it with updated text
           // Ensure the post-it remains selected after editing
           selectPostIt(postIt.id)
           autoFocusSectionForPostIt(postIt.id)
 
-          // After store sync recreates the fabric object, re-select it on the canvas
-          setTimeout(() => {
-            try {
-              console.log('Text edit completed, store updated - restoring canvas selection for post-it', postIt.id)
-              const canvasAfter = fabricCanvasRef.current
-              if (canvasAfter) {
-                const recreated = canvasAfter.getObjects().find((o: any) => o.postItId === postIt.id)
-                if (recreated) {
-                  canvasAfter.setActiveObject(recreated)
-                  canvasAfter.renderAll()
-                  console.log('Restored selection for edited post-it:', postIt.id)
-                } else {
-                  console.log('Could not find recreated object to reselect for post-it:', postIt.id)
-                }
-              }
-            } catch (error) {
-              console.error('Error completing text edit (restore selection):', error)
-            }
-          }, 100)
+          console.log('Text edit completed, post-it restored and selected')
         } catch (error) {
           console.error('Error completing text edit:', error)
+          // Restore interactivity even if there's an error
+          rectObj.selectable = true
+          rectObj.evented = true
+          canvas.renderAll()
         }
       }
       
