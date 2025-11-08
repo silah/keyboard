@@ -298,6 +298,7 @@ const Canvas = () => {
     rect.on('moving', () => {
       const { left, top } = rect
       updatePostIt(postIt.id, { x: left || 0, y: top || 0 })
+      // Text will be redrawn automatically via after:render event
     })
 
     // Handle movement completion to check for section changes
@@ -438,9 +439,11 @@ const Canvas = () => {
     })
 
     canvas.add(rect)
+    
+    // Add resize handles next 
     Object.values(handles).forEach(handle => canvas.add(handle))
     
-    // Store text rendering function to avoid multiple event listeners
+    // Use canvas drawing approach with proper selection awareness
     const renderPostItText = () => {
       const ctx = canvas.getContext()
       if (ctx && rect.visible && canvas.getObjects().includes(rect)) {
@@ -450,6 +453,9 @@ const Canvas = () => {
           ctx.fillStyle = '#333'
           ctx.textAlign = 'left'
           ctx.textBaseline = 'top'
+          
+          // Ensure text is always visible regardless of selection
+          ctx.globalCompositeOperation = 'source-over'
           
           // Word wrap the text
           const words = postIt.text.split(' ')
@@ -477,8 +483,13 @@ const Canvas = () => {
       }
     }
     
-    // Add the text rendering to after:render event
+    // Render text after everything else to ensure it's on top
     canvas.on('after:render', renderPostItText)
+    
+    // Also render on selection changes to ensure visibility during selection
+    canvas.on('selection:created', renderPostItText)
+    canvas.on('selection:updated', renderPostItText)
+    canvas.on('selection:cleared', renderPostItText)
     
     // Store reference to clean up later if needed
     ;(rect as any).textRenderer = renderPostItText
@@ -615,15 +626,29 @@ const Canvas = () => {
           console.log('Updated post-it text:', updatedText)
           
           // Re-create the post-it with updated text
+          // Ensure the post-it remains selected after editing
+          selectPostIt(postIt.id)
+          autoFocusSectionForPostIt(postIt.id)
+
+          // After store sync recreates the fabric object, re-select it on the canvas
           setTimeout(() => {
             try {
-              console.log('Text edit completed, store updated - letting sync effect handle recreation')
-              // Don't manually recreate the fabric object - let the store sync handle it
-              // This prevents duplicate objects in zoomed mode
+              console.log('Text edit completed, store updated - restoring canvas selection for post-it', postIt.id)
+              const canvasAfter = fabricCanvasRef.current
+              if (canvasAfter) {
+                const recreated = canvasAfter.getObjects().find((o: any) => o.postItId === postIt.id)
+                if (recreated) {
+                  canvasAfter.setActiveObject(recreated)
+                  canvasAfter.renderAll()
+                  console.log('Restored selection for edited post-it:', postIt.id)
+                } else {
+                  console.log('Could not find recreated object to reselect for post-it:', postIt.id)
+                }
+              }
             } catch (error) {
-              console.error('Error completing text edit:', error)
+              console.error('Error completing text edit (restore selection):', error)
             }
-          }, 50)
+          }, 100)
         } catch (error) {
           console.error('Error completing text edit:', error)
         }
@@ -649,8 +674,9 @@ const Canvas = () => {
       const canvas = fabricCanvasRef.current
       const activeObject = canvas.getActiveObject()
       
-      // Get current editing state directly instead of relying on state variable
-      const currentlyEditing = canvas.getActiveObject()?.type === 'i-text' && (canvas.getActiveObject() as any).isEditing
+      // Check if currently editing text (prevent keyboard shortcuts during text edit)
+      // Check for active HTML textarea overlays used for text editing
+      const currentlyEditing = document.querySelector('textarea[data-post-it-id]') !== null
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (activeObject && (activeObject as any).postItId && !currentlyEditing) {
@@ -668,12 +694,31 @@ const Canvas = () => {
         }
       }
 
-      // Create new post-it at center when 'n' is pressed
+      // Create new post-it when 'n' is pressed
       if (e.key === 'n' && !currentlyEditing && !editingSectionId) {
         e.preventDefault()
-        const centerX = window.innerWidth / 2
-        const centerY = window.innerHeight / 2
-        createPostIt(centerX - 100, centerY - 75)
+        
+        let targetX, targetY
+        
+        // If a section is focused, place the post-it in that section
+        if (focusedSectionId && currentBoard) {
+          const focusedSection = currentBoard.sections.find(s => s.id === focusedSectionId)
+          if (focusedSection) {
+            // Place post-it in the center of the focused section
+            targetX = focusedSection.x + (focusedSection.width / 2) - 100
+            targetY = focusedSection.y + 60 // 60px from top to account for section title
+            console.log('Creating post-it in focused section', focusedSectionId, 'at position:', { x: targetX, y: targetY })
+          }
+        }
+        
+        // Fallback to screen center if no focused section
+        if (!targetX || !targetY) {
+          targetX = window.innerWidth / 2 - 100
+          targetY = window.innerHeight / 2 - 75
+          console.log('Creating post-it at screen center (no focused section)')
+        }
+        
+        createPostIt(targetX, targetY)
       }
 
       // Create new section with Ctrl+Space (prevent double calls)
