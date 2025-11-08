@@ -182,7 +182,16 @@ const Canvas = () => {
               // Update the fabric object's stored text to match the current store data
               obj.postItText = postIt.text
               
-              // Don't clear the area - just draw text directly over the post-it background
+              // Clear the text area by filling it with the post-it's background color
+              const textAreaX = (obj.left || 0) + 5
+              const textAreaY = (obj.top || 0) + 5
+              const textAreaWidth = (obj.width || 200) - 10
+              const textAreaHeight = (obj.height || 150) - 10
+              
+              ctx.fillStyle = postIt.color
+              ctx.fillRect(textAreaX, textAreaY, textAreaWidth, textAreaHeight)
+              
+              // Now draw the text
               ctx.font = `${postIt.fontSize}px Arial`
               ctx.fillStyle = '#333'
               ctx.textAlign = 'left'
