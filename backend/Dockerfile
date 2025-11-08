@@ -1,8 +1,14 @@
 # Backend Dockerfile
 FROM node:18
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Install build dependencies for better-sqlite3 and curl for health checks
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -11,6 +17,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies first (including dev deps for build)
+# better-sqlite3 will compile native bindings
 RUN npm install
 
 # Copy source code
@@ -19,7 +26,10 @@ COPY . .
 # Build the TypeScript code
 RUN npm run build
 
-# Create data directory for JSON storage
+# Copy non-TypeScript files that aren't compiled (like .sql files)
+RUN cp -r src/database/*.sql dist/database/ 2>/dev/null || true
+
+# Create data directory for database storage
 RUN mkdir -p data
 
 # Expose port

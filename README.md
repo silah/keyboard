@@ -2,6 +2,10 @@
 
 A web application for creating and managing digital post-it notes on an infinite canvas, controlled primarily through keyboard shortcuts.
 
+> **🆕 Multi-Tenant Version Available!**  
+> This repository now includes a multi-tenant version with user authentication, teams, and board sharing.  
+> **See:** [`SETUP_GUIDE.md`](SETUP_GUIDE.md) for the new version, or continue below for the original single-user version.
+
 ## Tech Stack (Open Source First)
 
 ### Frontend
@@ -55,6 +59,8 @@ A web application for creating and managing digital post-it notes on an infinite
 - **Menu** - Mouse-driven interface
 
 ## Installation & Setup
+
+> **Note:** For the new multi-tenant version with authentication, see [`SETUP_GUIDE.md`](SETUP_GUIDE.md) and [`DOCKER_DEPLOYMENT.md`](DOCKER_DEPLOYMENT.md)
 
 ### Option 1: Docker (Recommended)
 

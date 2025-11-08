@@ -34,18 +34,18 @@ interface BoardStore {
   updateCanvasSize: (width: number, height: number) => void
   
   // Board management actions
-  loadAllBoards: () => Promise<void>
-  createNewBoard: (name: string) => Promise<void>
-  switchToBoard: (boardId: string) => Promise<void>
-  deleteBoard: (boardId: string) => Promise<void>
+  loadAllBoards: (token?: string) => Promise<void>
+  createNewBoard: (name: string, token?: string) => Promise<void>
+  switchToBoard: (boardId: string, token?: string) => Promise<void>
+  deleteBoard: (boardId: string, token?: string) => Promise<void>
   
   // Canvas actions
   setZoom: (zoom: number) => void
   setPan: (panX: number, panY: number) => void
   
   // Board actions
-  saveBoard: () => Promise<void>
-  loadBoard: (id: string) => Promise<void>
+  saveBoard: (token?: string) => Promise<void>
+  loadBoard: (id: string, token?: string) => Promise<void>
   newBoard: () => void
 }
 
@@ -461,16 +461,22 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     }))
   },
 
-  saveBoard: async () => {
+  saveBoard: async (token?: string) => {
     const { currentBoard, canvasState } = get()
     if (!currentBoard) return
 
     try {
+      const headers: any = {
+        'Content-Type': 'application/json',
+      }
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
       const response = await fetch('http://localhost:3001/api/boards', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(currentBoard),
       })
 
@@ -491,17 +497,28 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     }
   },
 
-  loadBoard: async (id: string) => {
+  loadBoard: async (id: string, token?: string) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/boards/${id}`)
+      const headers: any = {}
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(`http://localhost:3001/api/boards/${id}`, {
+        headers
+      })
+      
       if (response.ok) {
         const board = await response.json()
         set({ currentBoard: board })
       } else {
         console.error('Failed to load board')
+        throw new Error('Failed to load board')
       }
     } catch (error) {
       console.error('Error loading board:', error)
+      throw error
     }
   },
 
@@ -519,26 +536,18 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   // Board management functions
-  loadAllBoards: async () => {
+  loadAllBoards: async (token?: string) => {
     try {
-      const response = await fetch('http://localhost:3001/api/boards')
+      const headers: any = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch('http://localhost:3001/api/boards', { headers })
       if (response.ok) {
         const boards = await response.json()
         set({ allBoards: boards })
         console.log('Loaded boards list:', boards)
-        
-        // If no boards exist and we have a default board, save it
-        const { currentBoard } = get()
-        if (boards.length === 0 && currentBoard) {
-          console.log('No boards found, saving default board')
-          await get().saveBoard()
-          // Reload the boards list to include the newly saved board
-          const updatedResponse = await fetch('http://localhost:3001/api/boards')
-          if (updatedResponse.ok) {
-            const updatedBoards = await updatedResponse.json()
-            set({ allBoards: updatedBoards })
-          }
-        }
       } else {
         console.error('Failed to load boards list')
       }
@@ -547,13 +556,18 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     }
   },
 
-  createNewBoard: async (name: string) => {
+  createNewBoard: async (name: string, token?: string) => {
     try {
+      const headers: any = {
+        'Content-Type': 'application/json',
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
       const response = await fetch('http://localhost:3001/api/boards/new', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ name }),
       })
 
@@ -563,7 +577,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         
         // Update the boards list
         const { loadAllBoards } = get()
-        await loadAllBoards()
+        await loadAllBoards(token)
         
         // Switch to the new board (board is already saved by the backend)
         set({ currentBoard: newBoard })
@@ -579,7 +593,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     }
   },
 
-  switchToBoard: async (boardId: string) => {
+  switchToBoard: async (boardId: string, token?: string) => {
     try {
       const { currentBoard: oldBoard, saveBoard } = get()
       console.log('Switching from board', oldBoard?.id, 'to board', boardId)
@@ -587,10 +601,15 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       // Auto-save the current board before switching (prevent data loss)
       if (oldBoard && oldBoard.id !== boardId) {
         console.log('Auto-saving current board before switching')
-        await saveBoard()
+        await saveBoard(token)
       }
       
-      const response = await fetch(`http://localhost:3001/api/boards/${boardId}`)
+      const headers: any = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(`http://localhost:3001/api/boards/${boardId}`, { headers })
       if (response.ok) {
         const board = await response.json()
         console.log('Loaded board data:', {
@@ -622,10 +641,16 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     }
   },
 
-  deleteBoard: async (boardId: string) => {
+  deleteBoard: async (boardId: string, token?: string) => {
     try {
+      const headers: any = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
       const response = await fetch(`http://localhost:3001/api/boards/${boardId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers
       })
 
       if (response.ok) {
@@ -633,17 +658,17 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         
         // Update the boards list
         const { loadAllBoards, currentBoard, allBoards } = get()
-        await loadAllBoards()
+        await loadAllBoards(token)
         
         // If we deleted the current board, switch to another board or create a default one
         if (currentBoard?.id === boardId) {
           const remainingBoards = allBoards.filter(b => b.id !== boardId)
           if (remainingBoards.length > 0) {
             // Switch to the first remaining board
-            await get().switchToBoard(remainingBoards[0].id)
+            await get().switchToBoard(remainingBoards[0].id, token)
           } else {
             // Create a default board if no boards remain
-            await get().createNewBoard('My Board')
+            await get().createNewBoard('My Board', token)
           }
         }
       } else {

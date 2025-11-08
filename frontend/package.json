@@ -14,11 +14,13 @@
     "fabric": "^5.3.0",
     "zustand": "^4.4.1",
     "react-hotkeys-hook": "^4.4.1",
-    "react-hook-form": "^7.45.4"
+    "react-hook-form": "^7.45.4",
+    "react-router-dom": "^6.20.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
+    "@types/react-router-dom": "^5.3.3",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "@vitejs/plugin-react": "^4.0.3",
