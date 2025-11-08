@@ -44,6 +44,41 @@ app.get('/api/boards/:id', (req: Request, res: Response) => {
   }
 })
 
+// Create new board
+app.post('/api/boards/new', (req: Request, res: Response) => {
+  try {
+    const { name } = req.body
+    
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Board name is required' })
+    }
+    
+    const newBoard: Board = {
+      id: Math.random().toString(36).substring(7),
+      name: name.trim(),
+      postIts: [],
+      sections: [
+        {
+          id: 1,
+          name: 'Section 1',
+          x: 0,
+          y: 0,
+          width: 1920, // Default width, will be adjusted by frontend
+          height: 1080 // Default height, will be adjusted by frontend
+        }
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    
+    const savedBoard = boardStorage.saveBoard(newBoard)
+    res.json(savedBoard)
+  } catch (error) {
+    console.error('Error creating new board:', error)
+    return res.status(500).json({ error: 'Failed to create new board' })
+  }
+})
+
 // Save board (create or update)
 app.post('/api/boards', (req: Request, res: Response) => {
   try {

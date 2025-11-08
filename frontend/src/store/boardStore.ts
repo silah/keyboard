@@ -9,6 +9,7 @@ let isCreatingSection = false
 
 interface BoardStore {
   currentBoard: Board | null
+  allBoards: Array<{ id: string; name: string; createdAt: number; updatedAt: number; postItCount: number }>
   canvasState: CanvasState
   canvasSize: { width: number, height: number }
   focusedSectionId: number | null
@@ -31,6 +32,12 @@ interface BoardStore {
   reassignPostItToSection: (postItId: string, sectionId: number) => void
   deleteSection: (sectionId: number) => void
   updateCanvasSize: (width: number, height: number) => void
+  
+  // Board management actions
+  loadAllBoards: () => Promise<void>
+  createNewBoard: (name: string) => Promise<void>
+  switchToBoard: (boardId: string) => Promise<void>
+  deleteBoard: (boardId: string) => Promise<void>
   
   // Canvas actions
   setZoom: (zoom: number) => void
@@ -58,6 +65,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     createdAt: Date.now(),
     updatedAt: Date.now()
   },
+  allBoards: [],
   canvasState: {
     zoom: 1,
     panX: 0,
@@ -129,6 +137,13 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         selectedPostItId: newPostIt.id // Automatically select the newly created post-it
       }
     }))
+
+    // Auto-focus the section for the newly created post-it
+    get().autoFocusSectionForPostIt(newPostIt.id)
+
+    // Don't auto-save immediately for new post-its - let the user interact first
+    // Auto-save will happen when they edit, move, or resize the post-it
+    console.log('Post-it created, auto-save will happen on first interaction')
   },
 
   updatePostIt: (id: string, updates: Partial<PostIt>) => {
@@ -141,6 +156,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         updatedAt: Date.now()
       } : null
     }))
+
+    // Auto-save after updating post-it (text, position, size, etc.)
+    setTimeout(() => get().saveBoard(), 100)
   },
 
   deletePostIt: (id: string) => {
@@ -151,6 +169,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         updatedAt: Date.now()
       } : null
     }))
+
+    // Auto-save after deleting post-it
+    setTimeout(() => get().saveBoard(), 100)
   },
 
   selectPostIt: (id: string | null) => {
@@ -239,6 +260,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     setTimeout(() => {
       isCreatingSection = false
     }, 100)
+
+    // Auto-save after creating section
+    setTimeout(() => get().saveBoard(), 200)
   },
 
   updateSectionName: (id: number, name: string) => {
@@ -251,6 +275,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         updatedAt: Date.now()
       } : null
     }))
+
+    // Auto-save after updating section name
+    setTimeout(() => get().saveBoard(), 100)
   },
 
   selectSection: (id: number | null) => {
@@ -322,6 +349,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         updatedAt: Date.now()
       } : null
     }))
+
+    // Auto-save after reassigning post-it to section
+    setTimeout(() => get().saveBoard(), 100)
   },
 
   deleteSection: (sectionId: number) => {
@@ -378,6 +408,9 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       } : null,
       canvasState: { ...state.canvasState, selectedSectionId: null }
     }))
+
+    // Auto-save after deleting section
+    setTimeout(() => get().saveBoard(), 100)
   },
 
   updateCanvasSize: (width: number, height: number) => {
@@ -429,7 +462,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   saveBoard: async () => {
-    const { currentBoard } = get()
+    const { currentBoard, canvasState } = get()
     if (!currentBoard) return
 
     try {
@@ -443,6 +476,13 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
 
       if (response.ok) {
         console.log('Board saved successfully')
+        // Preserve the current selection after saving
+        const savedBoard = await response.json()
+        set((state: any) => ({
+          currentBoard: savedBoard,
+          // Preserve canvas state to maintain selection
+          canvasState: state.canvasState
+        }))
       } else {
         console.error('Failed to save board')
       }
@@ -476,5 +516,141 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       updatedAt: Date.now()
     }
     set({ currentBoard: newBoard })
+  },
+
+  // Board management functions
+  loadAllBoards: async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/boards')
+      if (response.ok) {
+        const boards = await response.json()
+        set({ allBoards: boards })
+        console.log('Loaded boards list:', boards)
+        
+        // If no boards exist and we have a default board, save it
+        const { currentBoard } = get()
+        if (boards.length === 0 && currentBoard) {
+          console.log('No boards found, saving default board')
+          await get().saveBoard()
+          // Reload the boards list to include the newly saved board
+          const updatedResponse = await fetch('http://localhost:3001/api/boards')
+          if (updatedResponse.ok) {
+            const updatedBoards = await updatedResponse.json()
+            set({ allBoards: updatedBoards })
+          }
+        }
+      } else {
+        console.error('Failed to load boards list')
+      }
+    } catch (error) {
+      console.error('Error loading boards list:', error)
+    }
+  },
+
+  createNewBoard: async (name: string) => {
+    try {
+      const response = await fetch('http://localhost:3001/api/boards/new', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name }),
+      })
+
+      if (response.ok) {
+        const newBoard = await response.json()
+        console.log('Created new board:', newBoard)
+        
+        // Update the boards list
+        const { loadAllBoards } = get()
+        await loadAllBoards()
+        
+        // Switch to the new board (board is already saved by the backend)
+        set({ currentBoard: newBoard })
+        
+        return newBoard
+      } else {
+        console.error('Failed to create new board')
+        throw new Error('Failed to create new board')
+      }
+    } catch (error) {
+      console.error('Error creating new board:', error)
+      throw error
+    }
+  },
+
+  switchToBoard: async (boardId: string) => {
+    try {
+      const { currentBoard: oldBoard, saveBoard } = get()
+      console.log('Switching from board', oldBoard?.id, 'to board', boardId)
+      
+      // Auto-save the current board before switching (prevent data loss)
+      if (oldBoard && oldBoard.id !== boardId) {
+        console.log('Auto-saving current board before switching')
+        await saveBoard()
+      }
+      
+      const response = await fetch(`http://localhost:3001/api/boards/${boardId}`)
+      if (response.ok) {
+        const board = await response.json()
+        console.log('Loaded board data:', {
+          id: board.id,
+          name: board.name,
+          postItCount: board.postIts.length,
+          postItIds: board.postIts.map((p: any) => p.id)
+        })
+        
+        set({ 
+          currentBoard: board,
+          // Reset canvas state when switching boards
+          canvasState: {
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            selectedPostItId: null,
+            selectedSectionId: null
+          },
+          focusedSectionId: null,
+          isZoomedToSection: false
+        })
+        console.log('Switched to board:', board.name)
+      } else {
+        console.error('Failed to switch to board:', boardId)
+      }
+    } catch (error) {
+      console.error('Error switching to board:', error)
+    }
+  },
+
+  deleteBoard: async (boardId: string) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/boards/${boardId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        console.log('Deleted board:', boardId)
+        
+        // Update the boards list
+        const { loadAllBoards, currentBoard, allBoards } = get()
+        await loadAllBoards()
+        
+        // If we deleted the current board, switch to another board or create a default one
+        if (currentBoard?.id === boardId) {
+          const remainingBoards = allBoards.filter(b => b.id !== boardId)
+          if (remainingBoards.length > 0) {
+            // Switch to the first remaining board
+            await get().switchToBoard(remainingBoards[0].id)
+          } else {
+            // Create a default board if no boards remain
+            await get().createNewBoard('My Board')
+          }
+        }
+      } else {
+        console.error('Failed to delete board:', boardId)
+      }
+    } catch (error) {
+      console.error('Error deleting board:', error)
+    }
   }
 }))

@@ -10,6 +10,7 @@ const Canvas = () => {
   const lastSectionCreateTime = useRef<number>(0)
   const { 
     currentBoard, 
+    allBoards,
     canvasState,
     focusedSectionId,
     isZoomedToSection,
@@ -26,7 +27,11 @@ const Canvas = () => {
     zoomOutToAllSections,
     reassignPostItToSection,
     deleteSection,
-    updateCanvasSize
+    updateCanvasSize,
+    loadAllBoards,
+    createNewBoard,
+    switchToBoard,
+    deleteBoard
   } = useBoardStore()
   const [editingSectionId, setEditingSectionId] = useState<number | null>(null)
 
@@ -80,6 +85,11 @@ const Canvas = () => {
     }
   }, [createPostIt, selectPostIt])
 
+  // Load boards list on component mount
+  useEffect(() => {
+    loadAllBoards()
+  }, [loadAllBoards])
+
   // Sync sections and post-its from store to canvas
   useEffect(() => {
     if (!fabricCanvasRef.current || !currentBoard) return
@@ -90,6 +100,9 @@ const Canvas = () => {
     }
 
     const canvas = fabricCanvasRef.current
+    
+    // Capture the currently selected post-it ID before clearing
+    const currentlySelectedPostItId = canvasState.selectedPostItId
     
     canvas.clear()
 
@@ -144,6 +157,20 @@ const Canvas = () => {
     })
 
     canvas.renderAll()
+
+    // Restore selection after canvas reconstruction (only if we had a selection)
+    if (currentlySelectedPostItId) {
+      setTimeout(() => {
+        const targetObject = canvas.getObjects().find((obj: any) => 
+          obj.postItId === currentlySelectedPostItId
+        )
+        if (targetObject) {
+          canvas.setActiveObject(targetObject)
+          canvas.renderAll()
+          console.log('Restored post-it selection after canvas rebuild:', currentlySelectedPostItId)
+        }
+      }, 50)
+    }
   }, [currentBoard?.postIts, currentBoard?.sections, isZoomedToSection, focusedSectionId, editingSectionId])
 
   // Handle window resize
@@ -166,6 +193,12 @@ const Canvas = () => {
     const canvas = fabricCanvasRef.current
     if (!canvas || !canvasState.selectedPostItId) return
 
+    // Only attempt selection if the current board actually has this post-it
+    if (!currentBoard?.postIts.find(p => p.id === canvasState.selectedPostItId)) {
+      console.log('Post-it', canvasState.selectedPostItId, 'not found in current board, skipping auto-selection')
+      return
+    }
+
     // Small delay to ensure fabric object is created
     const selectTimer = setTimeout(() => {
       // Find the fabric object with the matching postItId
@@ -176,12 +209,14 @@ const Canvas = () => {
       if (targetObject) {
         canvas.setActiveObject(targetObject)
         canvas.renderAll()
-        console.log('Auto-selected newly created post-it:', canvasState.selectedPostItId)
+        console.log('Auto-selected post-it:', canvasState.selectedPostItId)
+      } else {
+        console.log('Auto-selection failed - fabric object not found for post-it:', canvasState.selectedPostItId)
       }
     }, 50)
 
     return () => clearTimeout(selectTimer)
-  }, [canvasState.selectedPostItId])
+  }, [canvasState.selectedPostItId, currentBoard?.postIts])
 
   const createFabricSection = (canvas: fabric.Canvas, section: any) => {
     // Create section boundary with different style if focused
@@ -951,8 +986,46 @@ const Canvas = () => {
   }, [deletePostIt, selectPostIt, createPostIt, createSection, reassignPostItToSection, deleteSection, focusedSectionId, zoomToSection, zoomOutToAllSections, editingSectionId])
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full relative">
       <canvas ref={canvasRef} className="block" />
+      
+      {/* Board Indicator - always show, subtle when single board */}
+      <div className="absolute bottom-4 right-4 flex items-center gap-2">
+        {allBoards.length > 0 ? (
+          <div className="flex gap-1">
+            {/* Board dots indicator */}
+            {allBoards.map((board, index) => (
+              <button
+                key={board.id}
+                onClick={() => switchToBoard(board.id)}
+                className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                  currentBoard?.id === board.id 
+                    ? 'bg-teal-400 scale-125' 
+                    : 'bg-gray-400 hover:bg-gray-300'
+                }`}
+                title={`Switch to ${board.name}`}
+              />
+            ))}
+            {/* New board button */}
+            <button
+              onClick={() => createNewBoard(`Board ${allBoards.length + 1}`)}
+              className="w-3 h-3 rounded-full bg-gray-200 hover:bg-teal-200 transition-all duration-200 flex items-center justify-center text-gray-600 text-xs font-bold"
+              title="Create new board"
+            >
+              +
+            </button>
+          </div>
+        ) : (
+          /* Show create button when no boards loaded yet */
+          <button
+            onClick={() => createNewBoard('My First Board')}
+            className="w-6 h-6 rounded-full bg-gray-200 hover:bg-teal-200 transition-all duration-200 flex items-center justify-center text-gray-600 opacity-30 hover:opacity-70"
+            title="Create new board"
+          >
+            <span className="text-sm">+</span>
+          </button>
+        )}
+      </div>
       
       {/* Instructions overlay */}
       <div className="absolute bottom-4 left-4 bg-black/25 text-white px-3 py-2 rounded text-sm">
@@ -963,6 +1036,7 @@ const Canvas = () => {
         <div>Ctrl+Alt+1-4: delete section • Delete: remove selected post-it</div>
         <div>Ctrl+Arrow Keys: navigate to nearest post-it in direction</div>
         <div>Shift+Up: zoom to focused section • Shift+Down: show all sections</div>
+        <div className="text-teal-200">+ (bottom-right): create board • Dots: switch boards</div>
       </div>
     </div>
   )
