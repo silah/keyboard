@@ -19,6 +19,7 @@ interface BoardStore {
   updatePostIt: (id: string, updates: Partial<PostIt>) => void
   deletePostIt: (id: string) => void
   selectPostIt: (id: string | null) => void
+  autoFocusSectionForPostIt: (postItId: string | null) => void
   
   // Section actions
   createSection: () => void
@@ -156,6 +157,32 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     set((state: any) => ({
       canvasState: { ...state.canvasState, selectedPostItId: id }
     }))
+  },
+
+  // Helper function to auto-focus section when selecting post-it from different section
+  autoFocusSectionForPostIt: (postItId: string | null) => {
+    const { currentBoard, focusedSectionId } = get()
+    
+    if (!postItId || !currentBoard) {
+      return // Don't change section focus when deselecting
+    }
+
+    const selectedPostIt = currentBoard.postIts.find((p: any) => p.id === postItId)
+    if (!selectedPostIt) {
+      return // Post-it not found
+    }
+
+    const postItSectionId = selectedPostIt.sectionId
+    
+    // Only change section focus if:
+    // 1. No section is currently focused, OR
+    // 2. The post-it is in a different section than the currently focused one
+    if (focusedSectionId === null || focusedSectionId !== postItSectionId) {
+      console.log('Auto-focusing section', postItSectionId, 'for selected post-it')
+      set((state: any) => ({
+        focusedSectionId: postItSectionId
+      }))
+    }
   },
 
   // Section management

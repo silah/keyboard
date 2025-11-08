@@ -17,6 +17,7 @@ const Canvas = () => {
     updatePostIt, 
     deletePostIt, 
     selectPostIt,
+    autoFocusSectionForPostIt,
     createSection,
     updateSectionName,
     selectSection,
@@ -64,6 +65,7 @@ const Canvas = () => {
         const obj = e.selected[0] as any
         if (obj.postItId) {
           selectPostIt(obj.postItId)
+          autoFocusSectionForPostIt(obj.postItId)
         }
       }
     })
@@ -296,6 +298,53 @@ const Canvas = () => {
     rect.on('moving', () => {
       const { left, top } = rect
       updatePostIt(postIt.id, { x: left || 0, y: top || 0 })
+    })
+
+    // Handle movement completion to check for section changes
+    rect.on('modified', () => {
+      const { left, top } = rect
+      
+      // Check if the post-it has moved to a different section
+      if (currentBoard && currentBoard.sections) {
+        const newSection = getSectionForPosition(currentBoard.sections, left || 0, top || 0)
+        
+        if (newSection && newSection.id !== postIt.sectionId) {
+          console.log('Post-it moved to different section via mouse drag:', newSection.id)
+          // Update the post-it's section assignment
+          updatePostIt(postIt.id, { sectionId: newSection.id })
+          // Auto-focus the new section
+          autoFocusSectionForPostIt(postIt.id)
+          
+          // Restore post-it focus after section change (canvas may re-render)
+          setTimeout(() => {
+            const canvas = fabricCanvasRef.current
+            if (canvas) {
+              const updatedObject = canvas.getObjects().find((obj: any) => obj.postItId === postIt.id)
+              if (updatedObject) {
+                canvas.setActiveObject(updatedObject)
+                canvas.renderAll()
+                selectPostIt(postIt.id)
+                console.log('Post-it focus restored after mouse drag section change:', postIt.id)
+              }
+            }
+          }, 100)
+        } else {
+          // Even if no section change, ensure the post-it stays selected
+          // (sometimes fabric.js loses selection during dragging)
+          setTimeout(() => {
+            const canvas = fabricCanvasRef.current
+            if (canvas && !canvas.getActiveObject()) {
+              const currentObject = canvas.getObjects().find((obj: any) => obj.postItId === postIt.id)
+              if (currentObject) {
+                canvas.setActiveObject(currentObject)
+                canvas.renderAll()
+                selectPostIt(postIt.id)
+                console.log('Post-it focus restored after mouse drag (same section):', postIt.id)
+              }
+            }
+          }, 50)
+        }
+      }
     })
 
     // Add custom resize handles using separate rect objects
@@ -710,6 +759,9 @@ const Canvas = () => {
         
         reassignPostItToSection(postItId, sectionId)
         
+        // Auto-focus the target section
+        autoFocusSectionForPostIt(postItId)
+        
         // Reselect the object after reassignment to maintain focus
         setTimeout(() => {
           // Find the updated object with the same postItId
@@ -717,8 +769,12 @@ const Canvas = () => {
           if (updatedObject) {
             canvas.setActiveObject(updatedObject)
             canvas.renderAll()
+            selectPostIt(postItId) // Ensure store state matches canvas selection
+            console.log('Post-it focus restored after section reassignment:', postItId)
+          } else {
+            console.log('Could not find post-it to restore focus:', postItId)
           }
-        }, 50)
+        }, 100) // Increase timeout to ensure canvas sync completes
       }
 
       // Directional focus navigation with Ctrl+Arrow keys
@@ -812,6 +868,7 @@ const Canvas = () => {
           canvas.setActiveObject(targetPostIt)
           canvas.renderAll()
           selectPostIt((targetPostIt as any).postItId)
+          autoFocusSectionForPostIt((targetPostIt as any).postItId)
         } else {
           console.log('No valid target found in direction:', e.key)
         }
